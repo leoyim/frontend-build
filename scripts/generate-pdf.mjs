@@ -15,15 +15,15 @@ const BUILD_DIR = path.join(ROOT, 'build');
 const OUT_DIR = path.join(BUILD_DIR, 'pdf');
 const OUT_FILE = path.join(OUT_DIR, 'frontend-build-ebook.pdf');
 
-// 必须与 docusaurus.config.ts 的 baseUrl 保持一致
-const BASE_URL = '/frontend-build/';
+// 必须与 docusaurus.config.ts 的 baseUrl 保持一致（自定义域名下为根路径）
+const BASE_URL = '/';
 
 // 书籍元信息（用于封面与页脚）
 const BOOK = {
   title: '前端打包构建',
   subtitle: '从底层原理到工程实践',
   tagline: '一本由真实互动教学沉淀而成的技术电子书',
-  url: 'ebook.leoyim.cn/frontend-build/',
+  url: 'ebook.leoyim.cn',
   version: '1.0.0',
 };
 
@@ -121,7 +121,7 @@ async function waitForMermaid(page, expected) {
     .waitForFunction(
       (n) => document.querySelectorAll('.docusaurus-mermaid-container svg, svg[id^="mermaid"]').length >= n,
       expected,
-      { timeout: 45000 },
+      { timeout: 25000 },
     )
     .catch(() => {
       console.warn(`  ! mermaid 渲染等待超时（期望 ${expected} 张），按当前状态继续`);
@@ -228,31 +228,38 @@ async function main() {
   const page = await browser.newPage({ colorScheme: 'light' });
 
   const sections = [];
-  let mermaidTotal = 0;
+  let mermaidExpected = 0;
   let mermaidRendered = 0;
   for (const def of SECTIONS) {
     const url = `${origin}${BASE_URL}${def.route}`;
     const expected = expectedMermaidCount(def.md);
     console.log(`抓取：${def.label}${expected ? `（mermaid ${expected}）` : ''}`);
     await page.goto(url, { waitUntil: 'load', timeout: 60000 });
-    await waitForMermaid(page, expected);
-    // 等字体与布局稳定，避免 mermaid 尺寸跳动
-    await page.waitForTimeout(200);
-    const data = await page.evaluate(() => {
-      const article = document.querySelector('article');
-      if (!article) return { html: '', mermaidTotal: 0, mermaidRendered: 0 };
-      const containers = Array.from(article.querySelectorAll('.docusaurus-mermaid-container'));
-      return {
-        html: article.innerHTML,
-        mermaidTotal: containers.length,
-        mermaidRendered: containers.filter((c) => c.querySelector('svg')).length,
-      };
-    });
-    mermaidTotal += data.mermaidTotal;
-    mermaidRendered += data.mermaidRendered;
-    sections.push({ ...def, html: data.html });
+    // mermaid 由 hydration 渲染，且可能被 React 重渲染短暂清空，
+    // 因此"等到期望数量"后再复检，未达标就重试，避免偶发丢图。
+    let rendered = 0;
+    let html = '';
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await waitForMermaid(page, expected);
+      await page.waitForTimeout(300);
+      const data = await page.evaluate(() => {
+        const article = document.querySelector('article');
+        if (!article) return { html: '', rendered: 0 };
+        const svgs = article.querySelectorAll('.docusaurus-mermaid-container svg, svg[id^="mermaid"]');
+        return { html: article.innerHTML, rendered: svgs.length };
+      });
+      rendered = data.rendered;
+      html = data.html;
+      if (rendered >= expected) break;
+    }
+    if (rendered < expected) {
+      console.warn(`  ! ${def.label} 的 mermaid 图未渲染齐：${rendered}/${expected}`);
+    }
+    mermaidExpected += expected;
+    mermaidRendered += rendered;
+    sections.push({ ...def, html });
   }
-  console.log(`mermaid 图：${mermaidRendered}/${mermaidTotal} 已渲染为 SVG`);
+  console.log(`mermaid 图：${mermaidRendered}/${mermaidExpected} 已渲染为 SVG`);
 
   const bodyHtml = [
     `<section class="pdf-cover">${buildCover()}</section>`,
