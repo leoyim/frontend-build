@@ -15,6 +15,27 @@ const config: Config = {
   title: '前端打包构建：从底层原理到工程实践',
   tagline: '由真实互动教学沉淀而成的技术电子书',
   favicon: 'img/favicon.svg',
+  // SVG 主图标之外补充 PNG 回退（旧浏览器标签页）与 iOS 主屏幕图标。
+  // 注意 headTags 的 href 不会自动拼 baseUrl，需显式带上子路径，否则线上 404。
+  headTags: [
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'icon',
+        type: 'image/png',
+        sizes: '32x32',
+        href: `${siteBaseUrl}img/favicon-32x32.png`,
+      },
+    },
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'apple-touch-icon',
+        sizes: '180x180',
+        href: `${siteBaseUrl}img/apple-touch-icon.png`,
+      },
+    },
+  ],
   future: {
     v4: true,
   },

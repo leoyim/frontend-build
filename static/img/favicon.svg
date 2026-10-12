@@ -1,4 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <rect x="3" y="5" width="26" height="22" rx="5" fill="#2563eb"/>
-  <path d="M10 13h12M10 17h12M10 21h7" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="前端打包构建">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#16418f"/>
+      <stop offset="1" stop-color="#080f24"/>
+    </linearGradient>
+    <linearGradient id="left" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3f8efc"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="right" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d4ed8"/>
+      <stop offset="1" stop-color="#13306e"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="url(#bg)"/>
+  <!-- 等距包裹立方体：象征模块被打包成产物 -->
+  <path d="M16 6.5 L25.5 11.3 L16 16.1 L6.5 11.3 Z" fill="#8fdcff"/>
+  <path d="M6.5 11.3 L16 16.1 V25.5 L6.5 20.7 Z" fill="url(#left)"/>
+  <path d="M25.5 11.3 L16 16.1 V25.5 L25.5 20.7 Z" fill="url(#right)"/>
+  <path d="M11 9 L21 14 M11 9 L21 14 M11 18.6 L21 23.6" fill="none" stroke="#dbeafe" stroke-width="0.9" stroke-linecap="round" opacity="0.55"/>
 </svg>
