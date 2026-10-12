@@ -3,9 +3,10 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const siteUrl = 'https://ebook.leoyim.cn';
-// 自定义域名会把 GitHub Pages 站点直接映射到域名根路径（仓库名不出现在 URL 中），
-// 因此 baseUrl 必须为 '/'，否则所有静态资源都会 404、页面失去样式。
-const siteBaseUrl = '/';
+// 自定义域名下，GitHub Pages 会把 artifact 根目录直接映射到域名根路径（仓库名段不进 URL），
+// 因此要让站点落在 /frontend-build/ 子路径，必须由 CI 把构建产物放进 artifact 的
+// frontend-build/ 子目录里（见 .github/workflows/deploy.yml），baseUrl 与之一致。
+const siteBaseUrl = '/frontend-build/';
 // PDF 由 scripts/generate-pdf.mjs 在构建后生成，链接检查阶段该文件尚不存在，
 // 因此这里使用绝对地址，既避免误报断链，也保证下载入口稳定可点。
 const bookPdfUrl = `${siteUrl}${siteBaseUrl}pdf/frontend-build-ebook.pdf`;

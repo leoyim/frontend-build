@@ -15,15 +15,15 @@ const BUILD_DIR = path.join(ROOT, 'build');
 const OUT_DIR = path.join(BUILD_DIR, 'pdf');
 const OUT_FILE = path.join(OUT_DIR, 'frontend-build-ebook.pdf');
 
-// 必须与 docusaurus.config.ts 的 baseUrl 保持一致（自定义域名下为根路径）
-const BASE_URL = '/';
+// 必须与 docusaurus.config.ts 的 baseUrl 保持一致
+const BASE_URL = '/frontend-build/';
 
 // 书籍元信息（用于封面与页脚）
 const BOOK = {
   title: '前端打包构建',
   subtitle: '从底层原理到工程实践',
   tagline: '一本由真实互动教学沉淀而成的技术电子书',
-  url: 'ebook.leoyim.cn',
+  url: 'ebook.leoyim.cn/frontend-build/',
   version: '1.0.0',
 };
 

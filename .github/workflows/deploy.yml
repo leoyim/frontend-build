@@ -36,12 +36,17 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Generate PDF
         run: npm run generate-pdf
+      - name: Assemble site under /frontend-build/
+        run: |
+          mkdir -p pages/frontend-build
+          cp -R build/. pages/frontend-build/
+          printf '%s\n' '<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=/frontend-build/"><title>前端打包构建</title></head><body><a href="/frontend-build/">进入《前端打包构建：从底层原理到工程实践》</a></body></html>' > pages/index.html
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build
+          path: pages
 
   deploy:
     needs: build
