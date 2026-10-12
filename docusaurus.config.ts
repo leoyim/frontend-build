@@ -2,6 +2,12 @@ import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
+const siteUrl = 'https://ebook.leoyim.cn';
+const siteBaseUrl = '/frontend-build/';
+// PDF 由 scripts/generate-pdf.mjs 在构建后生成，链接检查阶段该文件尚不存在，
+// 因此这里使用绝对地址，既避免误报断链，也保证下载入口稳定可点。
+const bookPdfUrl = `${siteUrl}${siteBaseUrl}pdf/frontend-build-ebook.pdf`;
+
 const config: Config = {
   title: '前端打包构建：从底层原理到工程实践',
   tagline: '由真实互动教学沉淀而成的技术电子书',
@@ -9,8 +15,8 @@ const config: Config = {
   future: {
     v4: true,
   },
-  url: 'https://ebook.leoyim.cn',
-  baseUrl: '/frontend-build/',
+  url: siteUrl,
+  baseUrl: siteBaseUrl,
   onBrokenLinks: 'warn',
   // 源内容中的中文锚点沿用原书标题 slug 习惯，与 Docusaurus 生成规则不完全一致；
   // 为不修改原文内容，这里忽略锚点不匹配的告警。
@@ -108,6 +114,11 @@ const config: Config = {
           to: '/docs/appendix/glossary',
           position: 'right',
           label: '术语表',
+        },
+        {
+          href: bookPdfUrl,
+          position: 'right',
+          label: '下载 PDF',
         },
       ],
     },

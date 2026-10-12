@@ -12,6 +12,7 @@
     "prebuild": "node scripts/copy-sources.mjs",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
+    "generate-pdf": "node scripts/generate-pdf.mjs",
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids",
     "typecheck": "tsc"
@@ -33,6 +34,7 @@
     "@docusaurus/tsconfig": "3.10.1",
     "@docusaurus/types": "3.10.1",
     "@types/react": "^19.0.0",
+    "playwright": "^1.64.0",
     "typescript": "~6.0.2"
   },
   "overrides": {

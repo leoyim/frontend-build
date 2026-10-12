@@ -30,6 +30,12 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
+      - name: Install CJK fonts (PDF 中文渲染)
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Generate PDF
+        run: npm run generate-pdf
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
