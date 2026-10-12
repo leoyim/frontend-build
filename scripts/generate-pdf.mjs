@@ -1,19 +1,27 @@
 // 构建期预生成整本电子书 PDF。
 // 思路：先把已构建好的静态站点用本地 HTTP 服务挂到 baseUrl 前缀下，
 // 再用无头 Chromium 逐个打开文档页（让 mermaid 在真实浏览器里渲染成 SVG），
-// 抽取每页 article 内容，拼成「封面 + 目录 + 正文」的单一文档，
-// 最后用 page.pdf 导出为带书签（outline）的 PDF，产物落到 build/pdf/。
+// 抽取每页 article 内容，拼成「目录 + 14 篇正文」导出带页码与书签的正文 PDF；
+// 封面是全幅设计页（含构建主题插图），单独无页脚渲染；最后合并两者并迁移书签树，
+// 产物落到 build/pdf/。
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
+import { PDFDocument, PDFName, PDFHexString, PDFNumber, PDFNull, PDFRef } from 'pdf-lib';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const BUILD_DIR = path.join(ROOT, 'build');
 const OUT_DIR = path.join(BUILD_DIR, 'pdf');
 const OUT_FILE = path.join(OUT_DIR, 'frontend-build-ebook.pdf');
+// 封面 / 正文先分别渲染为临时 PDF，再合并（封面不带页眉页脚，正文带页码）
+const COVER_TMP = path.join(OUT_DIR, '.cover.tmp.pdf');
+const BODY_TMP = path.join(OUT_DIR, '.body.tmp.pdf');
+// 封面独立 HTML 与插图临时挂到 build/ 下，由本地静态服务提供，渲染完即删
+const COVER_WEB_DIR = path.join(BUILD_DIR, '__cover');
+const COVER_ART_SRC = path.join(ROOT, 'scripts/cover/cover-art.jpg');
 
 // 必须与 docusaurus.config.ts 的 baseUrl 保持一致
 const BASE_URL = '/frontend-build/';
@@ -128,24 +136,12 @@ async function waitForMermaid(page, expected) {
     });
 }
 
-// 打印样式：分页、隐藏交互元素、避免代码/表格溢出，保证配色正确输出
+// 正文打印样式：分页、隐藏交互元素、避免代码/表格溢出，保证配色正确输出。
+// 封面是独立全幅文档（见 buildCoverHtml），不放这里。
 const PRINT_CSS = `
   @page { size: A4; }
   html, body { background: #fff !important; color: #1f2328 !important; margin: 0; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-
-  .pdf-cover {
-    break-after: page;
-    min-height: 235mm;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    text-align: center;
-  }
-  .pdf-cover .cover-title { font-size: 34pt; font-weight: 800; line-height: 1.25; margin: 0 0 6mm; }
-  .pdf-cover .cover-subtitle { font-size: 20pt; font-weight: 500; color: #0969da; margin: 0 0 14mm; }
-  .pdf-cover .cover-tagline { font-size: 12pt; color: #57606a; margin: 0 0 4mm; }
-  .pdf-cover .cover-meta { font-size: 10.5pt; color: #8b949e; margin-top: 26mm; line-height: 1.9; }
 
   .pdf-toc { break-after: page; }
   .pdf-toc .toc-heading { font-size: 24pt; font-weight: 700; margin: 0 0 10mm; }
@@ -188,16 +184,142 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;');
 }
 
-function buildCover() {
+// 专业技术书封面：全幅深色设计 + 构建流水线插图，独立渲染为无页眉页脚的单页 PDF。
+function buildCoverHtml() {
   const date = new Date().toISOString().slice(0, 10);
-  return `
-    <div class="cover-title">${escapeHtml(BOOK.title)}</div>
-    <div class="cover-subtitle">${escapeHtml(BOOK.subtitle)}</div>
-    <div class="cover-tagline">${escapeHtml(BOOK.tagline)}</div>
-    <div class="cover-meta">
-      <div>${escapeHtml(BOOK.url)}</div>
-      <div>版本 ${escapeHtml(BOOK.version)} · 导出于 ${date}</div>
-    </div>`;
+  const chips = ['正文 7 章', '架构图 26 幅', '全文 14 篇', '附录 · 术语 / 配置 / 参考'];
+  return `<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { width: 210mm; height: 297mm; }
+  body { font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif; }
+  .cover {
+    position: relative; width: 210mm; height: 297mm; overflow: hidden;
+    color: #e8f0ff;
+    background:
+      radial-gradient(120% 70% at 50% -8%, rgba(56,119,238,.30), transparent 60%),
+      radial-gradient(90% 55% at 88% 112%, rgba(10,197,255,.16), transparent 60%),
+      linear-gradient(158deg, #0a1128 0%, #0f1f42 50%, #080f24 100%);
+    display: flex; flex-direction: column;
+    padding: 19mm 19mm 13mm 22mm;
+  }
+  /* 顶部/底部渐隐的点阵纹理，暗示依赖网络 */
+  .cover::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background-image: radial-gradient(rgba(140,180,255,.13) 0.8px, transparent 0.8px);
+    background-size: 5mm 5mm;
+    -webkit-mask-image: linear-gradient(180deg, transparent, #000 16%, #000 84%, transparent);
+            mask-image: linear-gradient(180deg, transparent, #000 16%, #000 84%, transparent);
+  }
+  /* 左侧品牌色竖条 */
+  .side-bar {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 3mm;
+    background: linear-gradient(180deg, #2f81f7, #0ac5ff 55%, #2f81f7);
+  }
+  .top-row { position: relative; display: flex; justify-content: space-between; align-items: center; }
+  .kicker {
+    font-size: 8.5pt; letter-spacing: 3.5px; font-weight: 600; color: #7cc4ff;
+  }
+  .version { font-size: 8.5pt; letter-spacing: 2px; color: #7086ad; }
+
+  .hero {
+    position: relative; margin-top: 7mm; height: 76mm; border-radius: 3mm; overflow: hidden;
+    border: 1px solid rgba(120,175,255,.35);
+    background: #0a1734;
+    box-shadow: 0 0 26mm rgba(30,110,255,.20), inset 0 0 12mm rgba(18,55,130,.35);
+  }
+  .hero img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: center 44%; }
+  .hero::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(180deg, rgba(10,17,40,.42) 0%, transparent 18%, transparent 78%, rgba(10,17,40,.5) 100%);
+  }
+  .hero .hero-tag {
+    position: absolute; left: 5mm; bottom: 4mm; z-index: 2;
+    font-size: 8.5pt; letter-spacing: 3px; color: #a9d4ff;
+    background: rgba(10,23,52,.62); border: 1px solid rgba(124,196,255,.35);
+    padding: 1.6mm 4mm; border-radius: 100px;
+  }
+
+  .title-block { position: relative; margin-top: 12mm; }
+  .title {
+    font-size: 38pt; font-weight: 800; line-height: 1.18; letter-spacing: 3px;
+    text-shadow: 0 2px 18mm rgba(40,120,255,.5);
+  }
+  .subtitle {
+    margin-top: 5mm; display: flex; align-items: center; gap: 4mm;
+    font-size: 16.5pt; font-weight: 500; color: #7cc4ff; letter-spacing: 1.5px;
+  }
+  .subtitle .rule { display: inline-block; width: 14mm; height: 2px; background: linear-gradient(90deg, #0ac5ff, transparent); }
+  .tagline { margin-top: 7mm; font-size: 11pt; color: #9fb4d8; line-height: 1.85; letter-spacing: .5px; }
+
+  .chips { position: relative; margin-top: 9mm; display: flex; flex-wrap: wrap; gap: 3mm; }
+  .chip {
+    font-size: 9pt; letter-spacing: 1px; color: #c2dcff;
+    border: 1px solid rgba(124,196,255,.38); border-radius: 100px;
+    padding: 2mm 5mm; background: rgba(20,60,130,.28);
+  }
+
+  .spacer { flex: 1; }
+
+  .footer-meta {
+    position: relative; border-top: 1px solid rgba(140,180,255,.22);
+    padding-top: 5mm; display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 9.5pt; color: #8fa6cf; letter-spacing: .5px;
+  }
+  .footer-meta .url { color: #cfe1ff; font-weight: 600; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+  <div class="cover">
+    <div class="side-bar"></div>
+    <div class="top-row">
+      <div class="kicker">FRONTEND BUILD ENGINEERING · 技术电子书</div>
+      <div class="version">VERSION ${escapeHtml(BOOK.version)}</div>
+    </div>
+
+    <div class="hero">
+      <img id="art" src="cover-art.jpg" alt="前端构建流水线插图：模块经编译核心打包为产物">
+      <div class="hero-tag">MODULE GRAPH · BUNDLER · NATIVE TOOLING</div>
+    </div>
+
+    <div class="title-block">
+      <div class="title">${escapeHtml(BOOK.title)}</div>
+      <div class="subtitle"><span class="rule"></span>${escapeHtml(BOOK.subtitle)}</div>
+      <div class="tagline">${escapeHtml(BOOK.tagline)}</div>
+    </div>
+
+    <div class="chips">
+      ${chips.map((c) => `<span class="chip">${escapeHtml(c)}</span>`).join('')}
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="footer-meta">
+      <span class="url">${escapeHtml(BOOK.url)}</span>
+      <span>导出于 ${date}</span>
+    </div>
+  </div>
+  <script>
+    // 原图右下角带生成水印，这里在浏览器内裁掉底部 8% 后再使用
+    (async () => {
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = 'cover-art.jpg'; });
+      const w = img.naturalWidth;
+      const h = Math.floor(img.naturalHeight * 0.92);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h, 0, 0, w, h);
+      document.getElementById('art').src = canvas.toDataURL('image/jpeg', 0.92);
+      document.documentElement.dataset.coverReady = '1';
+    })();
+  </script>
+</body>
+</html>`;
 }
 
 function buildToc(sections) {
@@ -213,11 +335,129 @@ function buildToc(sections) {
   return html;
 }
 
+// 合并「封面 + 正文」。pdf-lib 合并不保留源大纲，因此遍历正文 PDF 的 /Outlines
+// 树，在新文档里重建一棵等价书签树（标题/层级/跳转目标全部保留，页码随合并自动平移）。
+async function mergePdfWithOutline(coverPath, bodyPath, outPath) {
+  const coverSrc = await PDFDocument.load(fs.readFileSync(coverPath));
+  const bodySrc = await PDFDocument.load(fs.readFileSync(bodyPath));
+  const doc = await PDFDocument.create();
+  await doc.copyPages(coverSrc, coverSrc.getPageIndices());
+  const bodyPages = await doc.copyPages(bodySrc, bodySrc.getPageIndices());
+
+  // 源正文页对象引用 -> 新文档页引用。
+  // 直接遍历源页树取间接引用（PDFPage.node.ref 在懒加载场景下可能为空）。
+  const bodyCtx = bodySrc.context;
+  const rootCatalog = bodyCtx.lookup(bodyCtx.trailerInfo.Root);
+  const pageMap = new Map();
+  const pageRefs = [];
+  const walkPageTree = (kidRef) => {
+    const kid = bodyCtx.lookup(kidRef);
+    const kids = kid.get(PDFName.of('Kids'));
+    if (kids && typeof kids.asArray === 'function') {
+      kids.asArray().forEach(walkPageTree);
+    } else {
+      pageRefs.push(kidRef);
+    }
+  };
+  walkPageTree(rootCatalog.get(PDFName.of('Pages')));
+  pageRefs.forEach((ref, i) => pageMap.set(ref.toString(), bodyPages[i].ref));
+
+  const outlinesRef = rootCatalog.get(PDFName.of('Outlines'));
+
+  if (outlinesRef && outlinesRef !== PDFNull) {
+    const srcRoot = bodyCtx.lookup(outlinesRef);
+    const numOrNull = (v) => (v && typeof v.asNumber === 'function' ? PDFNumber.of(v.asNumber()) : PDFNull);
+
+    const buildItem = (srcRef) => {
+      const src = bodyCtx.lookup(srcRef);
+      const dict = doc.context.obj({});
+      const ref = doc.context.register(dict);
+
+      const title = src.get(PDFName.of('Title'));
+      if (title && typeof title.decodeText === 'function') {
+        dict.set(PDFName.of('Title'), PDFHexString.fromText(title.decodeText()));
+      }
+
+      const dest = src.get(PDFName.of('Dest'));
+      if (dest && typeof dest.get === 'function') {
+        const first = dest.get(0);
+        const targetRef = first instanceof PDFRef ? pageMap.get(first.toString()) : undefined;
+        if (targetRef) {
+          dict.set(
+            PDFName.of('Dest'),
+            doc.context.obj([
+              targetRef,
+              PDFName.of('XYZ'),
+              numOrNull(dest.get(2)),
+              numOrNull(dest.get(3)),
+              numOrNull(dest.get(4)),
+            ]),
+          );
+        }
+      }
+
+      const firstChild = src.get(PDFName.of('First'));
+      const kids = firstChild && firstChild !== PDFNull ? buildSiblings(firstChild) : [];
+      return { ref, dict, src, kids };
+    };
+
+    const buildSiblings = (firstRef) => {
+      const items = [];
+      let cur = firstRef;
+      while (cur && cur !== PDFNull) {
+        items.push(buildItem(cur));
+        const next = items[items.length - 1].src.get(PDFName.of('Next'));
+        cur = next && next !== PDFNull ? next : null;
+      }
+      items.forEach((item, i) => {
+        if (i > 0) item.dict.set(PDFName.of('Prev'), items[i - 1].ref);
+        if (i < items.length - 1) item.dict.set(PDFName.of('Next'), items[i + 1].ref);
+        if (item.kids.length) {
+          item.dict.set(PDFName.of('First'), item.kids[0].ref);
+          item.dict.set(PDFName.of('Last'), item.kids[item.kids.length - 1].ref);
+          const count = item.src.get(PDFName.of('Count'));
+          if (count && count !== PDFNull) item.dict.set(PDFName.of('Count'), PDFNumber.of(count.asNumber()));
+          item.kids.forEach((k) => k.dict.set(PDFName.of('Parent'), item.ref));
+        }
+      });
+      return items;
+    };
+
+    const srcFirst = srcRoot.get(PDFName.of('First'));
+    if (srcFirst && srcFirst !== PDFNull) {
+      const top = buildSiblings(srcFirst);
+      const newRoot = doc.context.obj({ Type: PDFName.of('Outlines') });
+      const newRootRef = doc.context.register(newRoot);
+      newRoot.set(PDFName.of('First'), top[0].ref);
+      newRoot.set(PDFName.of('Last'), top[top.length - 1].ref);
+      const countAll = (items) => items.reduce((n, it) => n + 1 + countAll(it.kids), 0);
+      newRoot.set(PDFName.of('Count'), PDFNumber.of(countAll(top)));
+      top.forEach((item, i) => {
+        item.dict.set(PDFName.of('Parent'), newRootRef);
+        if (i > 0) item.dict.set(PDFName.of('Prev'), top[i - 1].ref);
+        if (i < top.length - 1) item.dict.set(PDFName.of('Next'), top[i + 1].ref);
+      });
+      doc.catalog.set(PDFName.of('Outlines'), newRootRef);
+      doc.catalog.set(PDFName.of('PageMode'), PDFName.of('UseOutlines'));
+    }
+  }
+
+  doc.setTitle(`${BOOK.title}：${BOOK.subtitle}`);
+  doc.setLanguage('zh-CN');
+  fs.writeFileSync(outPath, await doc.save());
+}
+
 async function main() {
   if (!fs.existsSync(path.join(BUILD_DIR, 'index.html'))) {
     throw new Error('未找到 build/ 产物，请先执行 npm run build');
   }
   fs.mkdirSync(OUT_DIR, { recursive: true });
+
+  // 准备封面页的临时站点目录（HTML + 插图），渲染完删除
+  fs.rmSync(COVER_WEB_DIR, { recursive: true, force: true });
+  fs.mkdirSync(COVER_WEB_DIR, { recursive: true });
+  fs.copyFileSync(COVER_ART_SRC, path.join(COVER_WEB_DIR, 'cover-art.jpg'));
+  fs.writeFileSync(path.join(COVER_WEB_DIR, 'index.html'), buildCoverHtml());
 
   const server = await startServer();
   const { port } = server.address();
@@ -261,8 +501,8 @@ async function main() {
   }
   console.log(`mermaid 图：${mermaidRendered}/${mermaidExpected} 已渲染为 SVG`);
 
+    // 正文 = 目录 + 14 篇（封面独立成页，见下方 renderCover）
   const bodyHtml = [
-    `<section class="pdf-cover">${buildCover()}</section>`,
     `<section class="pdf-toc">${buildToc(sections)}</section>`,
     ...sections.map(
       (s) => `<section class="pdf-section"><article class="theme-doc-markdown markdown">${s.html}</article></section>`,
@@ -280,22 +520,42 @@ async function main() {
     document.body.innerHTML = html;
   }, bodyHtml);
 
-  const headerTemplate = '<div></div>';
   const footerTemplate = `
     <div style="width:100%; font-size:9px; color:#8b949e; padding:0 18mm; display:flex; justify-content:space-between;">
       <span>${escapeHtml(BOOK.title)}：${escapeHtml(BOOK.subtitle)}</span>
       <span><span class="pageNumber"></span> / <span class="totalPages"></span></span>
     </div>`;
 
+  // 正文 PDF：带页码与书签（书签需同时开启 tagged）
+  await page.pdf({
+    path: BODY_TMP,
+    format: 'A4',
+    printBackground: true,
+    outline: true,
+    tagged: true,
+    displayHeaderFooter: true,
+    headerTemplate: '<div></div>',
+    footerTemplate,
+    margin: { top: '18mm', bottom: '20mm', left: '18mm', right: '18mm' },
+  });
+
+  // 封面 PDF：全幅、无页眉页脚
+  const coverPage = await browser.newPage({ viewport: { width: 794, height: 1123 } });
+  await coverPage.goto(`${origin}${BASE_URL}__cover/`, { waitUntil: 'load', timeout: 60000 });
+  await coverPage.waitForFunction(
+    () => document.documentElement.dataset.coverReady === '1',
+    { timeout: 30000 },
+  );
+  await coverPage.emulateMedia({ media: 'print' });
+
   // 调试用：设置 PDF_DEBUG_SHOT=1 时导出封面/目录/含图章节的预览图，便于人工核对排版
   if (process.env.PDF_DEBUG_SHOT) {
+    await coverPage.screenshot({ path: path.join(OUT_DIR, '_debug_cover.png') });
     await page.emulateMedia({ media: 'print' });
-    const shots = [
-      ['.pdf-cover', 'cover'],
+    for (const [sel, name] of [
       ['.pdf-toc', 'toc'],
       ['.pdf-section:nth-of-type(6)', 'chapter2-mermaid'],
-    ];
-    for (const [sel, name] of shots) {
+    ]) {
       const el = await page.$(sel);
       if (el) await el.screenshot({ path: path.join(OUT_DIR, `_debug_${name}.png`) });
     }
@@ -303,21 +563,21 @@ async function main() {
     console.log('已输出调试图截图：build/pdf/_debug_*.png');
   }
 
-  await page.pdf({
-    path: OUT_FILE,
+  await coverPage.pdf({
+    path: COVER_TMP,
     format: 'A4',
     printBackground: true,
-    // 生成书签（PDF outline）需同时开启 tagged，否则 Chromium 不会写入大纲
-    outline: true,
-    tagged: true,
-    displayHeaderFooter: true,
-    headerTemplate,
-    footerTemplate,
-    margin: { top: '18mm', bottom: '20mm', left: '18mm', right: '18mm' },
+    margin: { top: '0', bottom: '0', left: '0', right: '0' },
   });
 
   await browser.close();
   await new Promise((resolve) => server.close(resolve));
+
+  // 合并封面与正文，并把正文的书签树迁移到合并后的 PDF
+  await mergePdfWithOutline(COVER_TMP, BODY_TMP, OUT_FILE);
+  fs.rmSync(COVER_TMP, { force: true });
+  fs.rmSync(BODY_TMP, { force: true });
+  fs.rmSync(COVER_WEB_DIR, { recursive: true, force: true });
 
   const size = (fs.statSync(OUT_FILE).size / 1024 / 1024).toFixed(2);
   console.log(`PDF 生成完成：${path.relative(ROOT, OUT_FILE)}（${size} MB，共 ${sections.length} 篇）`);
