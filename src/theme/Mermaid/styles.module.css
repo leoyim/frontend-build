@@ -1,0 +1,107 @@
+.wrapper {
+  position: relative;
+  margin: 1rem 0;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: var(--ifm-global-radius);
+  background: transparent;
+}
+.wrapper:hover .toolbar {
+  opacity: 1;
+}
+.stage {
+  overflow: auto;
+  padding: 1rem;
+  min-height: 80px;
+}
+.stage :global(.docusaurus-mermaid-container) {
+  display: flex;
+  justify-content: center;
+}
+.stage svg {
+  max-width: none;
+}
+.toolbar {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 10;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ifm-color-emphasis-600);
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+.btn:hover {
+  background: var(--ifm-color-emphasis-200);
+  color: var(--ifm-color-emphasis-900);
+}
+.pct {
+  font-size: 11px;
+  font-family: var(--ifm-font-family-monospace);
+  color: var(--ifm-color-emphasis-500);
+  min-width: 32px;
+  text-align: center;
+  user-select: none;
+}
+/* Fullscreen overlay */
+.fullscreenOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+}
+.fullscreenToolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  z-index: 10;
+}
+.fullscreenToolbar .btn {
+  color: rgba(255, 255, 255, 0.8);
+}
+.fullscreenToolbar .btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.fullscreenContent {
+  max-width: 90vw;
+  max-height: 85vh;
+  overflow: auto;
+  padding: 2rem;
+  background: var(--ifm-background-surface-color);
+  border-radius: 8px;
+}
+.fullscreenContent :global(.docusaurus-mermaid-container) {
+  display: flex;
+  justify-content: center;
+}
+.fullscreenContent svg {
+  max-width: none;
+}
