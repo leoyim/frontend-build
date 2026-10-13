@@ -341,8 +341,12 @@ async function mergePdfWithOutline(coverPath, bodyPath, outPath) {
   const coverSrc = await PDFDocument.load(fs.readFileSync(coverPath));
   const bodySrc = await PDFDocument.load(fs.readFileSync(bodyPath));
   const doc = await PDFDocument.create();
-  await doc.copyPages(coverSrc, coverSrc.getPageIndices());
+  // copyPages 只是把页对象复制进文档上下文，并不会挂到页树上；
+  // 必须再逐个 addPage，否则页树只剩一个隐式空页——书签在、内容却空白。
+  const coverPages = await doc.copyPages(coverSrc, coverSrc.getPageIndices());
+  coverPages.forEach((p) => doc.addPage(p));
   const bodyPages = await doc.copyPages(bodySrc, bodySrc.getPageIndices());
+  bodyPages.forEach((p) => doc.addPage(p));
 
   // 源正文页对象引用 -> 新文档页引用。
   // 直接遍历源页树取间接引用（PDFPage.node.ref 在懒加载场景下可能为空）。
